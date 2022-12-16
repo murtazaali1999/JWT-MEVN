@@ -5,6 +5,8 @@ const dotenv = require("dotenv");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const db = require('./db.json');
+const cookieParser = require('cookie-parser');
+const bcrypt = require("bcrypt");
 
 //FILE IMPORTS
 const middle_jwt = require("./middleware/jwt");
@@ -12,8 +14,9 @@ const middle_jwt = require("./middleware/jwt");
 //CONFIGS & DRIVEN
 const app = express();
 dotenv.config({ path: "./config.env" }); //config.env
-app.use(cors()); //cors
+app.use(cors({ credentials: true, origin: "http://localhost:8080" })); //cors, crendentials and origin for cookies
 app.use(express.json());
+app.use(cookieParser());
 
 //ROUTES
 
@@ -36,7 +39,7 @@ app.get('/', (req, res) => {
     res.send("Hi");
 })
 
-app.post('/login', (req, res) => {
+app.post('/login', async (req, res) => {
 
     const { userName, password } = req.body;
 
@@ -57,12 +60,24 @@ app.post('/login', (req, res) => {
                 .json({ message: "user does not exist" });
         }
 
+        //hashing creates a random string, 25 are the salting rounds, 
+        //which also increases the time taken depending on the value
+        const salting = await bcrypt.genSalt(25);
+
+        //store the hashed-password in the database, during sign-up !!!!
+        //compare the hashed password with the entered hashed password to login
+        const hashedPassword = await bcrypt.hash(found.password, salting);
+        await bcrypt.compare(found.password, hashedPassword);
+        //compare the entered with hashed password
+
         //if found then sign token
         jwt.sign(found, process.env.JWT_SECRET, { expiresIn: "1m" }, (error, token) => {
+
             console.log(token);
+
             return res.status(200)
-                .json({ message: "Welcome to Jurrasic World", token: token })
-                .cookie("token", token, { httpOnly: true })
+                .cookie("Bearer", `Bearer ${token}`, { httpOnly: true })
+                .json({ message: "HMMM" })
         })
 
 
@@ -71,18 +86,19 @@ app.post('/login', (req, res) => {
     }
 })
 
-app.get("/get-all-user-names", middle_jwt.verifyJsonWebToken, (req, res) => {
+app.get("/get-all-users", middle_jwt.verifyJsonWebToken, (req, res) => {
+
     console.log(req.token);
 
     jwt.verify(req.token, process.env.JWT_SECRET, (err, data) => {
         if (err) {
             return res.status(403).json({ message: "token not verified" });
         } else {
-            res.status(200).json({ message: "SUCCESSFUL", data: data });
+            return res.status(200).json({ message: "SUCCESSFUL", data: data, users: db });
         }
     })
+})
 
-
-
-    return res.status(200).json({ users: db });
+app.get("/token", (req, res) => {
+    console.log(req.cookies.Bearer);
 })
